@@ -1,47 +1,56 @@
 "use client";
-import axios from "axios";
+import {
+  create,
+  destroy,
+  fetch,
+  update,
+} from "@/features/user/functions/client";
+import { User } from "@/features/user/types/user";
+import { AxiosError } from "axios";
 import { useEffect, useState } from "react";
-
-type User = {
-  id: number;
-  name: string;
-  email: string;
-};
 
 export default function Home() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
 
   const [users, setUsers] = useState<User[]>([]);
+  const [selectedUser, setSelectedUser] = useState<User | undefined>(undefined);
 
-  const fetchUsers = async (): Promise<User[]> => {
-    const res = await axios.get("http://localhost:18000/users");
-    return res.data.users;
+  const editUser = (user: User) => {
+    setSelectedUser(user);
+    setName(user.name);
+    setEmail(user.email);
   };
 
-  const validate = () => {
-    if (name === "") {
-      alert("名前を入力してください");
-      return false;
+  const submit = () => {
+    console.log(selectedUser);
+    if (selectedUser) {
+      updateUser(selectedUser);
+      return;
     }
-    if (email === "") {
-      alert("メールアドレスを入力してください");
-      return false;
-    }
-    return true;
+
+    createUser();
   };
 
   const createUser = async () => {
-    if (!validate()) return;
+    try {
+      const user = await create(name, email);
 
-    const res = await axios.post("http://localhost:18000/users", {
-      data: { name, email },
-    });
+      setUsers((prev) => [...prev, user]);
 
-    setUsers((prev) => [...prev, res.data.user]);
+      setName("");
+      setEmail("");
+    } catch (e: unknown) {
+      if (e instanceof AxiosError) {
+        // TODO: 画面に表示
+        if (e.response?.data.statusCode === 400) {
+          console.log(e.response?.data.error);
+          return;
+        }
 
-    setName("");
-    setEmail("");
+        console.log("System error");
+      }
+    }
   };
 
   const handleChange = (
@@ -50,14 +59,38 @@ export default function Home() {
   ) => {
     if (key === "name") {
       setName(e.target.value);
-    } else {
-      setEmail(e.target.value);
+      return;
     }
+    setEmail(e.target.value);
+  };
+
+  const updateUser = async (user: User) => {
+    const updatedUser = await update({ id: user.id, name, email });
+
+    const i = users.findIndex((u) => u.id === user.id);
+    const newUsers = [...users];
+    newUsers.splice(i, 1, updatedUser);
+
+    setUsers(newUsers);
+
+    setSelectedUser(undefined);
+    setName("");
+    setEmail("");
+  };
+
+  const deleteUser = async (user: User) => {
+    const deletedUser = await destroy(user);
+    const i = users.findIndex((u) => u.id === deletedUser.id);
+    const newUsers = [...users];
+    // i番目の要素を削除する
+    newUsers.splice(i, 1);
+
+    setUsers(newUsers);
   };
 
   useEffect(() => {
     (async () => {
-      const users = await fetchUsers();
+      const users = await fetch();
       setUsers(users);
     })();
   }, []);
@@ -68,12 +101,13 @@ export default function Home() {
         {users.length !== 0 &&
           users.map((user) => (
             <li key={user.id}>
-              {`ID: ${user.id}`} /{`名前: ${user.name}`}
+              {`ID: ${user.id} | 名前: ${user.name}`}{" "}
+              <span onClick={() => editUser(user)}>| ✏️編集 |</span>
+              <span onClick={() => deleteUser(user)}>🗑️削除</span>
             </li>
           ))}
       </ul>
       <div className="max-w-md mx-auto mt-5 p-5 bg-gray-100 rounded-md">
-        <h2 className="text-2xl font-semibold mb-3">ユーザー新規作成</h2>
         <div className="mb-4">
           <label htmlFor="name" className="block text-gray-700 font-bold mb-2">
             名前
@@ -104,7 +138,7 @@ export default function Home() {
         </div>
         <div className="text-center">
           <button
-            onClick={createUser}
+            onClick={() => submit()}
             className="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-md focus:outline-none focus:shadow-outline-green"
           >
             送信
